@@ -1,0 +1,28 @@
+# Repository Sanitizer Ignore Patterns
+# Similar to .gitignore - patterns for files/directories to exclude from sanitization
+
+# Build artifacts
+dist/
+build/
+out/
+target/
+
+# Dependencies
+node_modules/
+vendor/
+
+# Test fixtures (allowed binary test files)
+**/__fixtures__/
+**/__tests__/fixtures/
+**/test/fixtures/
+
+# Documentation assets
+docs/images/
+docs/assets/
+
+# Development tools
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
