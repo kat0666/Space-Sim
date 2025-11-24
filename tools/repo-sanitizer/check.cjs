@@ -271,7 +271,7 @@ function detectTechStack() {
             const majorVersion = parseInt(versionMatch[1]);
             stacks.babylonjs = majorVersion;
           } else {
-            stacks.babylonjs = 'unknown';
+            stacks.babylonjs = 0; // Use 0 for unknown version to maintain type consistency
           }
         }
       }
@@ -373,25 +373,28 @@ function main() {
       `Add these patterns to .gitattributes: ${Array.from(missingPatterns).join(' ')} filter=lfs diff=lfs merge=lfs -text`
     );
   }
-  
+
   // Detect and validate tech stacks
   console.log('\n📦 Detected tech stacks:');
   const stacks = detectTechStack();
-  
+
   if (stacks.typescript) console.log('   ✓ TypeScript');
   if (stacks.react) console.log('   ✓ React');
   if (stacks.rust) console.log('   ✓ Rust');
   if (stacks.electron) console.log('   ✓ Electron');
   if (stacks.tauri) console.log('   ✓ Tauri');
-  if (stacks.babylonjs) console.log(`   ✓ Babylon.js (version ${stacks.babylonjs})`);
+  if (stacks.babylonjs) {
+    const versionStr = stacks.babylonjs === 0 ? 'unknown' : stacks.babylonjs;
+    console.log(`   ✓ Babylon.js (version ${versionStr})`);
+  }
   if (stacks.webgpu) console.log('   ✓ WebGPU usage detected');
   if (stacks.webgl2) console.log('   ✓ WebGL2 usage detected');
-  
+
   // Validate Babylon.js version
-  if (stacks.babylonjs && typeof stacks.babylonjs === 'number' && stacks.babylonjs < 7) {
+  if (stacks.babylonjs && stacks.babylonjs > 0 && stacks.babylonjs < 7) {
     logWarning(`Babylon.js version ${stacks.babylonjs} detected. Consider upgrading to version 7+ for latest features.`);
   }
-  
+
   // Check for missing configurations
   const escalateToError = process.env.SANITIZER_STRICT === 'true';
   

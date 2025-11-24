@@ -58,7 +58,7 @@ jobs:
 
       - name: Run ESLint
         if: steps.check-linters.outputs.eslint == 'true'
-        run: npm run lint --if-present || npx eslint . --ext .ts,.tsx,.js,.jsx
+        run: npm run lint --if-present || npx eslint "**/*.{ts,tsx,js,jsx}"
         continue-on-error: false
 
       - name: Run Prettier Check

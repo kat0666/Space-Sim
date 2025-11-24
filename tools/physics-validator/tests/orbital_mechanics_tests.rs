@@ -1,10 +1,8 @@
 //! Integration tests for orbital mechanics
-//! 
+//!
 //! These tests verify the physics calculations against known real-world values.
 
 use physics_validator::*;
-
-const TOLERANCE: f64 = 1e-6;
 
 fn relative_error(actual: f64, expected: f64) -> f64 {
     ((actual - expected) / expected).abs()
@@ -82,18 +80,18 @@ fn test_gravitational_constant_units() {
     // [N] = [G] * [kg] * [kg] / [m]^2
     // [kg⋅m/s²] = [G] * [kg²] / [m²]
     // [G] = [m³/(kg⋅s²)]
-    
+
     let m1 = 1.0; // 1 kg
     let m2 = 1.0; // 1 kg
     let r = 1.0;  // 1 m
-    
+
     let force = gravitational_force(m1, m2, r);
-    
+
     // With these unit masses and unit distance, force should equal G
     let error = relative_error(force, G);
-    
+
     assert!(
-        error < TOLERANCE,
+        error < TEST_TOLERANCE,
         "Gravitational constant dimensional check failed: F = {} N, G = {} (error: {:.9})",
         force, G, error
     );
@@ -116,7 +114,7 @@ fn test_kepler_third_law() {
     let error = relative_error(ratio1, ratio2);
     
     assert!(
-        error < TOLERANCE,
+        error < TEST_TOLERANCE,
         "Kepler's Third Law verification failed: T₁²/r₁³ = {}, T₂²/r₂³ = {} (error: {:.9})",
         ratio1, ratio2, error
     );
@@ -139,7 +137,7 @@ fn test_inverse_square_law() {
     let error = relative_error(ratio, expected_ratio);
     
     assert!(
-        error < TOLERANCE,
+        error < TEST_TOLERANCE,
         "Inverse square law verification failed: a₁/a₂ = {}, expected {} (error: {:.9})",
         ratio, expected_ratio, error
     );
@@ -160,7 +158,7 @@ fn test_circular_orbit_energy_balance() {
     let error = relative_error(kinetic_per_unit_mass, potential_per_unit_mass / 2.0);
     
     assert!(
-        error < TOLERANCE,
+        error < TEST_TOLERANCE,
         "Circular orbit energy balance failed: KE = {} J/kg, PE/2 = {} J/kg (error: {:.9})",
         kinetic_per_unit_mass, potential_per_unit_mass / 2.0, error
     );

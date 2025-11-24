@@ -1,5 +1,5 @@
 //! Physics Validator Library
-//! 
+//!
 //! Core physics and orbital mechanics calculations for space simulations.
 //! This library provides validated implementations of fundamental physics formulas.
 
@@ -12,10 +12,13 @@ pub const EARTH_MASS: f64 = 5.972e24;
 /// Earth's radius in meters
 pub const EARTH_RADIUS: f64 = 6.371e6;
 
+/// Test tolerance for high-precision physics calculations (relative error threshold)
+pub const TEST_TOLERANCE: f64 = 1e-6;
+
 /// Calculate orbital velocity for a circular orbit
-/// 
+///
 /// Formula: v = sqrt(G * M / r)
-/// 
+///
 /// # Arguments
 /// * `mass` - Mass of the central body (kg)
 /// * `radius` - Orbital radius from center of mass (m)
@@ -30,8 +33,8 @@ pub const EARTH_RADIUS: f64 = 6.371e6;
 /// let leo_altitude = 400_000.0; // 400 km altitude
 /// let orbital_radius = EARTH_RADIUS + leo_altitude;
 /// let velocity = orbital_velocity(EARTH_MASS, orbital_radius);
-/// 
-/// // LEO orbital velocity should be approximately 7670 m/s
+///
+/// // LEO orbital velocity should be approximately 7670 m/s (within 1% tolerance)
 /// assert!((velocity - 7670.0).abs() / 7670.0 < 0.01);
 /// ```
 pub fn orbital_velocity(mass: f64, radius: f64) -> f64 {
@@ -144,8 +147,6 @@ pub fn gravitational_acceleration(mass: f64, distance: f64) -> f64 {
 mod tests {
     use super::*;
 
-    const TOLERANCE: f64 = 1e-6;
-
     fn relative_error(actual: f64, expected: f64) -> f64 {
         ((actual - expected) / expected).abs()
     }
@@ -238,13 +239,13 @@ mod tests {
         let test_radius = EARTH_RADIUS * 2.0;
         let v_orbit = orbital_velocity(EARTH_MASS, test_radius);
         let v_escape = escape_velocity(EARTH_MASS, test_radius);
-        
+
         let ratio = v_escape / v_orbit;
         let expected_ratio = 2.0_f64.sqrt();
         let error = relative_error(ratio, expected_ratio);
-        
+
         assert!(
-            error < TOLERANCE,
+            error < TEST_TOLERANCE,
             "Escape/orbital velocity ratio mismatch: got {}, expected {} (error: {:.9})",
             ratio, expected_ratio, error
         );
@@ -255,15 +256,15 @@ mod tests {
         // F = m * a, so a = F / m
         let test_mass = 100.0; // kg
         let distance = EARTH_RADIUS;
-        
+
         let force = gravitational_force(EARTH_MASS, test_mass, distance);
         let accel = gravitational_acceleration(EARTH_MASS, distance);
-        
+
         let derived_accel = force / test_mass;
         let error = relative_error(derived_accel, accel);
-        
+
         assert!(
-            error < TOLERANCE,
+            error < TEST_TOLERANCE,
             "Force/acceleration relationship mismatch: F/m = {} m/s², a = {} m/s² (error: {:.9})",
             derived_accel, accel, error
         );
