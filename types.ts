@@ -67,6 +67,7 @@ export interface SimulationSettings {
   paused: boolean;
   showTrails: boolean;
   gravityConstant: number;
+  showGrid: boolean;
 }
 
 // AI Service Types
@@ -99,4 +100,13 @@ export interface Scenario {
   bodies: StellarBody[];
   settings?: Partial<SimulationSettings>;
   camera?: Partial<CameraState>;
+}
+
+export interface DragPayload {
+  type: 'PRESET' | 'CUSTOM' | 'ANOMALY';
+  data: {
+    category?: StellarCategory;
+    anomalyType?: AnomalyType;
+    template?: CustomBodyTemplate;
+  };
 }

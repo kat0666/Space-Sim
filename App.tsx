@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import Sidebar from './components/Sidebar';
 import SimulationCanvas from './components/SimulationCanvas';
 import Controls from './components/Controls';
-import { StellarBody, StellarCategory, CameraState, SimulationSettings, Vector2, SimulationAnalysis, Scenario, AnomalyType, CustomBodyTemplate } from './types';
+import { StellarBody, StellarCategory, CameraState, SimulationSettings, Vector2, SimulationAnalysis, Scenario, AnomalyType, CustomBodyTemplate, DragPayload } from './types';
 import { STELLAR_PRESETS } from './constants';
 import { analyzeSimulationStability } from './services/geminiService';
 
@@ -39,7 +39,8 @@ const App: React.FC = () => {
     timeScale: 1,
     paused: false,
     showTrails: true,
-    gravityConstant: 0.5
+    gravityConstant: 0.5,
+    showGrid: true
   });
 
   const [selectedType, setSelectedType] = useState<StellarCategory | null>(null);
@@ -52,41 +53,39 @@ const App: React.FC = () => {
   // Custom template temporarily held for placement
   const [customTemplate, setCustomTemplate] = useState<CustomBodyTemplate | null>(null);
 
-  const handleBodyPlace = (position: Vector2, velocity: Vector2) => {
+  // Unified body creation logic
+  const createBodiesFromData = (position: Vector2, velocity: Vector2, type: StellarCategory | null, anomaly: AnomalyType | null, template: CustomBodyTemplate | null): StellarBody[] => {
     let newBodies: StellarBody[] = [];
 
-    if (customTemplate) {
+    if (template) {
         newBodies.push({
             id: crypto.randomUUID(),
-            name: customTemplate.name,
+            name: template.name,
             category: StellarCategory.PLANET, // Default category for custom
-            mass: customTemplate.mass,
-            radius: customTemplate.radius,
+            mass: template.mass,
+            radius: template.radius,
             position,
             velocity,
-            color: customTemplate.color,
+            color: template.color,
             trail: []
         });
-        setCustomTemplate(null); // Reset after placement
     } 
-    else if (selectedAnomalyType === 'WORMHOLE') {
+    else if (anomaly === 'WORMHOLE') {
         const id1 = crypto.randomUUID();
         const id2 = crypto.randomUUID();
-        // Create Pair
         newBodies.push({
             id: id1,
             name: 'Wormhole Alpha',
             category: StellarCategory.ANOMALY,
             anomalyType: 'WORMHOLE',
             linkedBodyId: id2,
-            mass: 500, // They need mass to anchor orbits? Or 0? Let's give them mass.
+            mass: 500,
             radius: 30,
             position,
             velocity,
             color: '#a855f7',
             trail: []
         });
-        // Place beta slightly offset
         newBodies.push({
             id: id2,
             name: 'Wormhole Beta',
@@ -95,14 +94,13 @@ const App: React.FC = () => {
             linkedBodyId: id1,
             mass: 500,
             radius: 30,
-            position: { x: position.x + 200, y: position.y + 200 }, // Initial offset
+            position: { x: position.x + 200, y: position.y + 200 }, 
             velocity: { x: 0, y: 0 },
             color: '#a855f7',
             trail: []
         });
-        setSelectedAnomalyType(null);
     }
-    else if (selectedAnomalyType === 'REPULSOR') {
+    else if (anomaly === 'REPULSOR') {
          newBodies.push({
             id: crypto.randomUUID(),
             name: 'Repulsor Node',
@@ -115,17 +113,16 @@ const App: React.FC = () => {
             color: '#ef4444',
             trail: []
         });
-        setSelectedAnomalyType(null);
     }
-    else if (selectedType) {
-        const preset = STELLAR_PRESETS[selectedType];
+    else if (type) {
+        const preset = STELLAR_PRESETS[type];
         const mass = preset.minMass + Math.random() * (preset.maxMass - preset.minMass);
         const radius = preset.minRadius + Math.random() * (preset.maxRadius - preset.minRadius);
         
         newBodies.push({
           id: crypto.randomUUID(),
-          name: `${selectedType} ${Math.floor(Math.random() * 1000)}`,
-          category: selectedType,
+          name: `${type} ${Math.floor(Math.random() * 1000)}`,
+          category: type,
           mass,
           radius,
           position,
@@ -133,10 +130,39 @@ const App: React.FC = () => {
           color: preset.defaultColor,
           trail: []
         });
-        setSelectedType(null);
     }
 
-    setBodies(prev => [...prev, ...newBodies]);
+    return newBodies;
+  };
+
+  // Called via Drag & Drop (Velocity is 0)
+  const handleDropBody = (position: Vector2, payload: DragPayload) => {
+      const bodies = createBodiesFromData(
+          position, 
+          { x: 0, y: 0 }, 
+          payload.data.category || null, 
+          payload.data.anomalyType || null, 
+          payload.data.template || null
+      );
+      setBodies(prev => [...prev, ...bodies]);
+  };
+
+  // Called via Click & Drag Launch
+  const handleBodyPlace = (position: Vector2, velocity: Vector2) => {
+    const bodies = createBodiesFromData(
+        position, 
+        velocity, 
+        selectedType, 
+        selectedAnomalyType, 
+        customTemplate
+    );
+    
+    setBodies(prev => [...prev, ...bodies]);
+
+    // Reset selection after launch
+    if (customTemplate) setCustomTemplate(null);
+    else if (selectedAnomalyType) setSelectedAnomalyType(null);
+    else if (selectedType) setSelectedType(null);
   };
 
   const handleAddBodyDirectly = (body: StellarBody) => {
@@ -157,7 +183,7 @@ const App: React.FC = () => {
   };
 
   const handleLoadScenario = (scenario: Scenario) => {
-      setBodies(scenario.bodies.map(b => ({...b, trail: [], id: crypto.randomUUID()}))); // Fresh IDs to avoid conflicts if reloading
+      setBodies(scenario.bodies.map(b => ({...b, trail: [], id: crypto.randomUUID()}))); 
       if (scenario.camera) {
           setCamera(prev => ({...prev, ...scenario.camera}));
       }
@@ -187,6 +213,7 @@ const App: React.FC = () => {
         onBodyPlace={handleBodyPlace}
         selectedBodyId={selectedBodyId}
         setSelectedBodyId={setSelectedBodyId}
+        onDropBody={handleDropBody}
       />
 
       <Sidebar
@@ -210,10 +237,10 @@ const App: React.FC = () => {
         isAnalyzing={isAnalyzing}
       />
 
-      {/* Placing Indicator */}
+      {/* Placing Indicator (for traditional click-to-launch) */}
       {(selectedType || selectedAnomalyType || customTemplate) && (
         <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-blue-900/80 border border-blue-500 px-6 py-2 rounded-full text-blue-100 font-bold shadow-[0_0_20px_rgba(0,100,255,0.5)] animate-pulse pointer-events-none z-50">
-          PLACING: {customTemplate ? customTemplate.name.toUpperCase() : (selectedType || selectedAnomalyType)?.toUpperCase()}
+          LAUNCH MODE: {customTemplate ? customTemplate.name.toUpperCase() : (selectedType || selectedAnomalyType)?.toUpperCase()}
         </div>
       )}
 
