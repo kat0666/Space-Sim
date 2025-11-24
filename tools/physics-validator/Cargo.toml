@@ -1,0 +1,14 @@
+[package]
+name = "physics-validator"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "physics_validator"
+path = "src/lib.rs"
+
+[[test]]
+name = "orbital_mechanics_tests"
+path = "tests/orbital_mechanics_tests.rs"
+
+[dependencies]

@@ -1,0 +1,155 @@
+name: Build & Test Pipeline
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: ['**']
+
+jobs:
+  build-and-test:
+    name: Build, Test & Validate
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+        if: hashFiles('package.json') != ''
+      
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+        if: hashFiles('Cargo.toml', 'src-tauri/Cargo.toml') != ''
+      
+      - name: Run Repository Sanitizer
+        run: node tools/repo-sanitizer/check.cjs
+        continue-on-error: false
+      
+      - name: Install Node Dependencies
+        if: hashFiles('package.json') != ''
+        run: npm ci
+      
+      - name: Check for Frontend Linting Configs
+        if: hashFiles('package.json') != ''
+        id: check-linters
+        run: |
+          if [ -f ".eslintrc" ] || [ -f ".eslintrc.js" ] || [ -f ".eslintrc.json" ] || [ -f "eslint.config.js" ]; then
+            echo "eslint=true" >> $GITHUB_OUTPUT
+          else
+            echo "eslint=false" >> $GITHUB_OUTPUT
+          fi
+          
+          if [ -f ".prettierrc" ] || [ -f ".prettierrc.js" ] || [ -f ".prettierrc.json" ] || [ -f "prettier.config.js" ]; then
+            echo "prettier=true" >> $GITHUB_OUTPUT
+          else
+            echo "prettier=false" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Run ESLint
+        if: steps.check-linters.outputs.eslint == 'true'
+        run: npm run lint --if-present || npx eslint . --ext .ts,.tsx,.js,.jsx
+        continue-on-error: false
+      
+      - name: Run Prettier Check
+        if: steps.check-linters.outputs.prettier == 'true'
+        run: npm run format:check --if-present || npx prettier --check "**/*.{ts,tsx,js,jsx,json,css,md}"
+        continue-on-error: false
+      
+      - name: Build Frontend
+        if: hashFiles('package.json') != ''
+        run: npm run build --if-present
+      
+      - name: Check Rust Formatting
+        if: hashFiles('Cargo.toml', 'src-tauri/Cargo.toml') != ''
+        run: cargo fmt -- --check
+        continue-on-error: false
+      
+      - name: Run Cargo Clippy
+        if: hashFiles('Cargo.toml', 'src-tauri/Cargo.toml') != ''
+        run: cargo clippy --all-targets --workspace -- -D warnings
+        continue-on-error: false
+      
+      - name: Run Rust Tests
+        if: hashFiles('Cargo.toml') != ''
+        run: cargo test --workspace
+        continue-on-error: false
+      
+      - name: Run Physics Validator Tests
+        if: hashFiles('tools/physics-validator/Cargo.toml') != ''
+        run: cargo test --manifest-path tools/physics-validator/Cargo.toml
+        continue-on-error: false
+      
+      - name: Check for Tauri Project
+        id: check-tauri
+        run: |
+          if [ -f "src-tauri/Cargo.toml" ] && [ -f "package.json" ]; then
+            echo "tauri=true" >> $GITHUB_OUTPUT
+          else
+            echo "tauri=false" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Build Tauri Application
+        if: steps.check-tauri.outputs.tauri == 'true'
+        run: |
+          # Install system dependencies for Tauri (Ubuntu/Debian)
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.0-dev \
+            libssl-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            || {
+              echo "::error::Failed to install Tauri system dependencies. Please ensure your CI environment has the required packages."
+              exit 1
+            }
+          
+          # Build Tauri app
+          cargo build --manifest-path src-tauri/Cargo.toml --release
+        continue-on-error: false
+      
+      - name: Find WGSL Shader Files
+        id: find-wgsl
+        run: |
+          if find . -name "*.wgsl" -not -path "*/node_modules/*" -not -path "*/target/*" -not -path "*/.git/*" | grep -q .; then
+            echo "wgsl=true" >> $GITHUB_OUTPUT
+          else
+            echo "wgsl=false" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Install Naga CLI
+        if: steps.find-wgsl.outputs.wgsl == 'true'
+        run: cargo install --locked naga-cli
+      
+      - name: Validate WGSL Shaders
+        if: steps.find-wgsl.outputs.wgsl == 'true'
+        run: |
+          find . -name "*.wgsl" -not -path "*/node_modules/*" -not -path "*/target/*" -not -path "*/.git/*" | while read shader; do
+            echo "Validating $shader"
+            naga "$shader" || {
+              echo "::error file=$shader::WGSL validation failed for $shader"
+              exit 1
+            }
+          done
+      
+      - name: Upload Test Artifacts on Failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: |
+            target/
+            dist/
+            *.log
+          retention-days: 7

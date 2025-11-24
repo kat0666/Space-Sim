@@ -1,0 +1,14 @@
+# Code Owners
+# These users will be automatically requested for review when PRs modify these paths
+
+# Root and configuration
+* @kat0666
+
+# GitHub workflows and configuration
+/.github/ @kat0666
+
+# Tools and automation
+/tools/ @kat0666
+
+# Agents
+/agents/ @kat0666
