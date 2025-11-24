@@ -1,0 +1,22 @@
+# CODEOWNERS file for Space-Sim repository
+# These owners will be the default owners for everything in the repo
+# unless a later match takes precedence.
+
+# Default owner for all files
+*               @kat0666
+
+# GitHub configuration and workflows
+/.github/       @kat0666
+
+# Automation tools and scripts
+/tools/         @kat0666
+
+# Agent documentation
+/agents/        @kat0666
+
+# Root configuration files
+/*.json         @kat0666
+/*.yml          @kat0666
+/*.yaml         @kat0666
+/*.toml         @kat0666
+/*.config.*     @kat0666
