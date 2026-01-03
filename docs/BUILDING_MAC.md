@@ -22,10 +22,12 @@ The installer will be created in the `release/` directory.
 
 ## Build Output
 
-The build creates:
-- `release/Space Sim-0.0.0.dmg` - Universal installer
-- `release/Space Sim-0.0.0-arm64.dmg` - Apple Silicon (M1/M2/M3) installer
-- `release/Space Sim-0.0.0-x64.dmg` - Intel Mac installer
+The build creates installers in the `release/` directory:
+- `Space Sim-{version}.dmg` - Universal installer
+- `Space Sim-{version}-arm64.dmg` - Apple Silicon (M1/M2/M3) installer
+- `Space Sim-{version}-x64.dmg` - Intel Mac installer
+
+Where `{version}` is the version number from `package.json`.
 
 ## Adding Custom Icons (Optional)
 

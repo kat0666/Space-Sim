@@ -4,9 +4,6 @@ import path from 'node:path';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-// Disable GPU acceleration for better compatibility
-app.disableHardwareAcceleration();
-
 process.env.DIST = path.join(__dirname, '../dist');
 process.env.VITE_PUBLIC = app.isPackaged
   ? process.env.DIST
