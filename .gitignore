@@ -10,7 +10,12 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+dist-electron
 *.local
+
+# Electron build artifacts
+release/
+out/
 
 # Rust build artifacts
 target/
