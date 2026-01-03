@@ -1,5 +1,6 @@
 import React, { useRef, useEffect } from 'react';
-import { StellarBody, CameraState, SimulationSettings, Vector2, StellarCategory, AnomalyType, DragPayload } from '../types';
+import { StellarBody, CameraState, SimulationSettings, Vector2, StellarCategory, AnomalyType, DragPayload, CollisionEvent } from '../types';
+import { calculateRelativeVelocity, calculateCollisionEnergy } from '../services/collisionService';
 
 // Global declaration for Babylon and Havok loaded via Script tags
 declare global {
@@ -21,6 +22,7 @@ interface SimulationCanvasProps {
   setSelectedBodyId: (id: string | null) => void;
   placingAnomalyType: AnomalyType | null;
   onDropBody: (position: Vector2, payload: DragPayload) => void;
+  onCollision: (collision: CollisionEvent) => void;
 }
 
 const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
@@ -34,7 +36,8 @@ const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
   selectedBodyId,
   setSelectedBodyId,
   placingAnomalyType,
-  onDropBody
+  onDropBody,
+  onCollision
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<any>(null);
@@ -43,10 +46,15 @@ const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
   const draggingRef = useRef<{ start: any; current: any; active: boolean }>({ start: null, current: null, active: false });
   const launchLineRef = useRef<any>(null);
   const gridMeshRef = useRef<any>(null);
-  
-  // Keep track of settings for the render loop without triggering re-initialization
+
+  // Keep track of settings and callbacks for the render loop
   const settingsRef = useRef(settings);
+  const onCollisionRef = useRef(onCollision);
+  const bodiesRef = useRef(bodies);
+
   useEffect(() => { settingsRef.current = settings; }, [settings]);
+  useEffect(() => { onCollisionRef.current = onCollision; }, [onCollision]);
+  useEffect(() => { bodiesRef.current = bodies; }, [bodies]);
 
   // Black Hole Shader
   const blackHoleVertexShader = `
@@ -386,8 +394,50 @@ const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
                     m1.physicsBody.applyImpulse(force.scale(dt), b1Pos);
                 }
             }
+
+            // Collision Detection
+            for (let i = 0; i < meshes.length; i++) {
+                for (let j = i + 1; j < meshes.length; j++) {
+                    const m1 = meshes[i];
+                    const m2 = meshes[j];
+                    if (!m1.physicsBody || !m2.physicsBody) continue;
+
+                    const pos1 = m1.physicsBody.transformNode.position;
+                    const pos2 = m2.physicsBody.transformNode.position;
+                    const dist = BABYLON.Vector3.Distance(pos1, pos2);
+                    const collisionThreshold = m1.metadata.radius + m2.metadata.radius;
+
+                    // Check if bodies are colliding
+                    if (dist < collisionThreshold) {
+                        // Find corresponding StellarBody objects
+                        const body1 = bodiesRef.current.find(b => b.id === m1.metadata.id);
+                        const body2 = bodiesRef.current.find(b => b.id === m2.metadata.id);
+
+                        if (body1 && body2) {
+                            const relativeVel = calculateRelativeVelocity(body1, body2);
+                            const collisionEnergy = calculateCollisionEnergy(body1, body2, relativeVel);
+
+                            const collisionEvent: CollisionEvent = {
+                                id: crypto.randomUUID(),
+                                body1,
+                                body2,
+                                impactVelocity: relativeVel,
+                                impactPoint: {
+                                    x: (pos1.x + pos2.x) / 2,
+                                    y: (pos1.z + pos2.z) / 2, // Note: Babylon uses Z for 2D Y
+                                },
+                                timestamp: Date.now(),
+                                relativeEnergy: collisionEnergy,
+                            };
+
+                            // Trigger collision handler
+                            onCollisionRef.current(collisionEvent);
+                        }
+                    }
+                }
+            }
         }
-        
+
         // Update Shaders
         const bhMat = scene.getMaterialByName("blackHoleMat");
         if (bhMat) bhMat.setFloat("time", performance.now() * 0.001);
