@@ -15,7 +15,7 @@ View your app in AI Studio: https://ai.studio/apps/drive/1AgDV_QKyMmBzZPc3FG4uRc
 **Get the latest release:** [Download installers](https://github.com/kat0666/Space-Sim/releases/latest)
 
 - **Windows**: Download the `.exe` installer
-- **macOS**: Download the `.dmg` file  
+- **macOS**: Download the `.dmg` file (Universal binary for Intel and Apple Silicon)
 - **Linux**: Download the `.AppImage` or `.deb` package
 
 ## Features
