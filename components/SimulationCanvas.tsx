@@ -1,5 +1,8 @@
-import React, { useRef, useEffect } from 'react';
-import { StellarBody, CameraState, SimulationSettings, Vector2, StellarCategory, AnomalyType, DragPayload } from '../types';
+import React, { useRef, useEffect, useState } from 'react';
+import { StellarBody, CameraState, SimulationSettings, Vector2, StellarCategory, AnomalyType, DragPayload, CollisionEvent, CollisionAnimationType } from '../types';
+import { calculateRelativeVelocity, calculateCollisionEnergy, findFusionRule } from '../services/collisionService';
+import { playCollisionAnimation } from '../services/collisionAnimations';
+import { generateTextureForBody } from '../services/proceduralTextures';
 
 // Global declaration for Babylon and Havok loaded via Script tags
 declare global {
@@ -21,6 +24,7 @@ interface SimulationCanvasProps {
   setSelectedBodyId: (id: string | null) => void;
   placingAnomalyType: AnomalyType | null;
   onDropBody: (position: Vector2, payload: DragPayload) => void;
+  onCollision: (collision: CollisionEvent) => void;
 }
 
 const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
@@ -34,7 +38,8 @@ const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
   selectedBodyId,
   setSelectedBodyId,
   placingAnomalyType,
-  onDropBody
+  onDropBody,
+  onCollision
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef<any>(null);
@@ -43,10 +48,15 @@ const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
   const draggingRef = useRef<{ start: any; current: any; active: boolean }>({ start: null, current: null, active: false });
   const launchLineRef = useRef<any>(null);
   const gridMeshRef = useRef<any>(null);
-  
-  // Keep track of settings for the render loop without triggering re-initialization
+
+  // Keep track of settings and callbacks for the render loop
   const settingsRef = useRef(settings);
+  const onCollisionRef = useRef(onCollision);
+  const bodiesRef = useRef(bodies);
+
   useEffect(() => { settingsRef.current = settings; }, [settings]);
+  useEffect(() => { onCollisionRef.current = onCollision; }, [onCollision]);
+  useEffect(() => { bodiesRef.current = bodies; }, [bodies]);
 
   // Black Hole Shader
   const blackHoleVertexShader = `
@@ -232,7 +242,15 @@ const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
 
       const light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0, 1, 0), scene);
       light.intensity = 0.4; // Higher ambient
-      
+
+      // Environment Map for PBR reflections (procedural space environment)
+      const envTexture = BABYLON.CubeTexture.CreateFromPrefilteredData(
+        "https://playground.babylonjs.com/textures/environment.env",
+        scene
+      );
+      scene.environmentTexture = envTexture;
+      scene.environmentIntensity = 0.3; // Subtle space reflections
+
       // Spacetime Grid
       const gridMesh = BABYLON.MeshBuilder.CreateGround("spacetimeGrid", { width: 8000, height: 8000, subdivisions: 200 }, scene);
       const gridMat = new BABYLON.ShaderMaterial("spacetimeMat", scene, {
@@ -386,8 +404,60 @@ const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
                     m1.physicsBody.applyImpulse(force.scale(dt), b1Pos);
                 }
             }
+
+            // Collision Detection
+            for (let i = 0; i < meshes.length; i++) {
+                for (let j = i + 1; j < meshes.length; j++) {
+                    const m1 = meshes[i];
+                    const m2 = meshes[j];
+                    if (!m1.physicsBody || !m2.physicsBody) continue;
+
+                    const pos1 = m1.physicsBody.transformNode.position;
+                    const pos2 = m2.physicsBody.transformNode.position;
+                    const dist = BABYLON.Vector3.Distance(pos1, pos2);
+                    const collisionThreshold = m1.metadata.radius + m2.metadata.radius;
+
+                    // Check if bodies are colliding
+                    if (dist < collisionThreshold) {
+                        // Find corresponding StellarBody objects
+                        const body1 = bodiesRef.current.find(b => b.id === m1.metadata.id);
+                        const body2 = bodiesRef.current.find(b => b.id === m2.metadata.id);
+
+                        if (body1 && body2) {
+                            const relativeVel = calculateRelativeVelocity(body1, body2);
+                            const collisionEnergy = calculateCollisionEnergy(body1, body2, relativeVel);
+
+                            const impactPoint = {
+                                x: (pos1.x + pos2.x) / 2,
+                                y: (pos1.z + pos2.z) / 2, // Note: Babylon uses Z for 2D Y
+                            };
+
+                            const collisionEvent: CollisionEvent = {
+                                id: crypto.randomUUID(),
+                                body1,
+                                body2,
+                                impactVelocity: relativeVel,
+                                impactPoint,
+                                timestamp: Date.now(),
+                                relativeEnergy: collisionEnergy,
+                            };
+
+                            // Determine animation type from fusion rules
+                            const fusionRule = findFusionRule(body1, body2);
+                            if (fusionRule) {
+                                // Play visual animation immediately
+                                const intensity = Math.min(collisionEnergy / 1000, 5.0);
+                                playCollisionAnimation(scene, fusionRule.animation, impactPoint, intensity);
+                            }
+
+                            // Trigger collision handler for physics/state update
+                            onCollisionRef.current(collisionEvent);
+                        }
+                    }
+                }
+            }
         }
-        
+
         // Update Shaders
         const bhMat = scene.getMaterialByName("blackHoleMat");
         if (bhMat) bhMat.setFloat("time", performance.now() * 0.001);
@@ -468,7 +538,7 @@ const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
             } 
             // 2. Stars
             else if (
-                body.category === StellarCategory.STAR || 
+                body.category === StellarCategory.STAR ||
                 body.category === StellarCategory.NEUTRON_STAR ||
                 body.category === StellarCategory.PULSAR ||
                 body.category === StellarCategory.MAGNETAR ||
@@ -479,13 +549,27 @@ const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
                 body.category === StellarCategory.BROWN_DWARF ||
                 body.category === StellarCategory.QUASAR
             ) {
-                mesh = BABYLON.MeshBuilder.CreateSphere(body.name, { diameter: body.radius * 2, segments: 32 }, scene);
+                mesh = BABYLON.MeshBuilder.CreateSphere(body.name, { diameter: body.radius * 2, segments: 64 }, scene);
                 const pbr = new BABYLON.PBRMaterial(body.name + "_mat", scene);
+
+                // Generate procedural texture for stars
+                const textures = generateTextureForBody(scene, body.category, body.mass, body.id.split('-')[0].charCodeAt(0) * 1000);
+
+                if (textures.albedo) {
+                    pbr.albedoTexture = textures.albedo;
+                } else {
+                    const c = BABYLON.Color3.FromHexString(body.color);
+                    pbr.albedoColor = c;
+                }
+
                 const c = BABYLON.Color3.FromHexString(body.color);
-                pbr.albedoColor = c;
+                pbr.emissiveTexture = textures.albedo; // Use same texture for emission
                 pbr.emissiveColor = c;
+                pbr.emissiveIntensity = 1.5;
                 pbr.metallic = 0.0;
-                pbr.roughness = 0.9;
+                pbr.roughness = 1.0;
+                pbr.unlit = false;
+
                 mesh.material = pbr;
                 
                 const ps = new BABYLON.ParticleSystem("particles", 2000, scene);
@@ -516,16 +600,50 @@ const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
             }
             // 4. Planets/Others
             else {
+                // Higher segments for better texture detail
                 if (body.category === StellarCategory.ASTEROID) {
                     mesh = BABYLON.MeshBuilder.CreatePolyhedron(body.name, { type: 1, size: body.radius }, scene);
                 } else {
-                    mesh = BABYLON.MeshBuilder.CreateSphere(body.name, { diameter: body.radius * 2, segments: 32 }, scene);
+                    mesh = BABYLON.MeshBuilder.CreateSphere(body.name, { diameter: body.radius * 2, segments: 64 }, scene);
                 }
+
                 const pbr = new BABYLON.PBRMaterial(body.name + "_mat", scene);
-                const c = BABYLON.Color3.FromHexString(body.color);
-                pbr.albedoColor = c;
-                pbr.metallic = 0.1;
-                pbr.roughness = 0.6;
+
+                // Generate procedural textures
+                const textures = generateTextureForBody(scene, body.category, body.mass, body.id.split('-')[0].charCodeAt(0) * 1000);
+
+                if (textures.albedo) {
+                    pbr.albedoTexture = textures.albedo;
+                } else {
+                    const c = BABYLON.Color3.FromHexString(body.color);
+                    pbr.albedoColor = c;
+                }
+
+                // Normal map for surface detail
+                if (textures.normal) {
+                    pbr.bumpTexture = textures.normal;
+                    pbr.bumpTexture.level = 1.5; // Bump intensity
+                }
+
+                // PBR properties
+                if (body.category === StellarCategory.PLANET) {
+                    pbr.metallic = 0.0;
+                    pbr.roughness = 0.7;
+
+                    // Add subsurface scattering for atmosphere effect
+                    if (body.mass > 15 && body.mass < 80) { // Earth-like planets
+                        pbr.subSurface.isRefractionEnabled = true;
+                        pbr.subSurface.tintColor = new BABYLON.Color3(0.3, 0.5, 0.9);
+                        pbr.subSurface.refractionIntensity = 0.2;
+                    }
+                } else if (body.category === StellarCategory.ASTEROID || body.category === StellarCategory.MOON) {
+                    pbr.metallic = 0.2;
+                    pbr.roughness = 1.0;
+                } else {
+                    pbr.metallic = 0.1;
+                    pbr.roughness = 0.8;
+                }
+
                 mesh.material = pbr;
             }
 

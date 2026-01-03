@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import Sidebar from './components/Sidebar';
 import SimulationCanvas from './components/SimulationCanvas';
 import Controls from './components/Controls';
-import { StellarBody, StellarCategory, CameraState, SimulationSettings, Vector2, SimulationAnalysis, Scenario, AnomalyType, CustomBodyTemplate, DragPayload } from './types';
+import { StellarBody, StellarCategory, CameraState, SimulationSettings, Vector2, SimulationAnalysis, Scenario, AnomalyType, CustomBodyTemplate, DragPayload, CollisionEvent } from './types';
 import { STELLAR_PRESETS } from './constants';
 import { analyzeSimulationStability } from './services/geminiService';
+import { processCollision } from './services/collisionService';
 
 const App: React.FC = () => {
   const [bodies, setBodies] = useState<StellarBody[]>([
@@ -49,9 +50,14 @@ const App: React.FC = () => {
   const [analysisResult, setAnalysisResult] = useState<SimulationAnalysis | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [showAnalysisModal, setShowAnalysisModal] = useState(false);
-  
+
   // Custom template temporarily held for placement
   const [customTemplate, setCustomTemplate] = useState<CustomBodyTemplate | null>(null);
+
+  // Collision system state
+  const [activeCollisions, setActiveCollisions] = useState<CollisionEvent[]>([]);
+  const collisionCooldownRef = useRef<Set<string>>(new Set());
+  const originalTimeScaleRef = useRef<number>(1);
 
   // Unified body creation logic
   const createBodiesFromData = (position: Vector2, velocity: Vector2, type: StellarCategory | null, anomaly: AnomalyType | null, template: CustomBodyTemplate | null): StellarBody[] => {
@@ -198,6 +204,60 @@ const App: React.FC = () => {
       setSelectedAnomalyType(null);
   };
 
+  // Collision Handler with automatic time dilation and fusion
+  const handleCollision = async (collision: CollisionEvent) => {
+    // Create unique collision ID to prevent duplicate processing
+    const collisionKey = [collision.body1.id, collision.body2.id].sort().join('-');
+
+    // Check cooldown to prevent rapid re-collisions
+    if (collisionCooldownRef.current.has(collisionKey)) {
+      return;
+    }
+
+    // Add to cooldown
+    collisionCooldownRef.current.add(collisionKey);
+    setTimeout(() => {
+      collisionCooldownRef.current.delete(collisionKey);
+    }, 3000); // 3 second cooldown
+
+    // Process collision
+    const collisionResult = processCollision(collision);
+
+    // Store original time scale
+    originalTimeScaleRef.current = settings.timeScale;
+
+    // Apply time dilation (slow-mo)
+    setSettings(prev => ({
+      ...prev,
+      timeScale: collisionResult.timeDilation
+    }));
+
+    // Add collision to active list for UI
+    setActiveCollisions(prev => [...prev, collision]);
+
+    // Wait for animation duration (based on time dilation)
+    const animationDuration = 3000; // 3 seconds real time
+    await new Promise(resolve => setTimeout(resolve, animationDuration));
+
+    // Remove old bodies and add new ones
+    setBodies(prev => {
+      const filtered = prev.filter(b => !collisionResult.removeBodyIds.includes(b.id));
+      return [...filtered, ...collisionResult.resultBodies];
+    });
+
+    // Wait a bit more for visual effect
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    // Restore original time scale
+    setSettings(prev => ({
+      ...prev,
+      timeScale: originalTimeScaleRef.current
+    }));
+
+    // Remove from active collisions
+    setActiveCollisions(prev => prev.filter(c => c.id !== collision.id));
+  };
+
   const selectedBody = bodies.find(b => b.id === selectedBodyId) || null;
 
   return (
@@ -214,6 +274,7 @@ const App: React.FC = () => {
         selectedBodyId={selectedBodyId}
         setSelectedBodyId={setSelectedBodyId}
         onDropBody={handleDropBody}
+        onCollision={handleCollision}
       />
 
       <Sidebar
@@ -295,6 +356,41 @@ const App: React.FC = () => {
             >
                 Return to Simulation
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Collision Notifications */}
+      {activeCollisions.length > 0 && (
+        <div className="absolute bottom-20 left-1/2 transform -translate-x-1/2 z-50 space-y-2">
+          {activeCollisions.map((collision, idx) => (
+            <div
+              key={collision.id}
+              className="bg-red-900/90 border border-red-500 px-8 py-4 rounded-xl text-red-100 font-bold shadow-[0_0_30px_rgba(255,0,0,0.6)] animate-pulse backdrop-blur-sm"
+            >
+              <div className="flex items-center gap-3">
+                <span className="text-4xl">💥</span>
+                <div>
+                  <div className="text-lg">COLLISION DETECTED</div>
+                  <div className="text-sm font-normal opacity-80">
+                    {collision.body1.name} + {collision.body2.name}
+                  </div>
+                  <div className="text-xs font-mono opacity-60">
+                    Impact Velocity: {collision.impactVelocity.toFixed(2)} units/s
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Time Dilation Indicator */}
+      {settings.timeScale < 0.5 && (
+        <div className="absolute top-20 left-1/2 transform -translate-x-1/2 bg-purple-900/80 border border-purple-500 px-6 py-3 rounded-full text-purple-100 font-bold shadow-[0_0_20px_rgba(128,0,255,0.5)] backdrop-blur-sm z-50">
+          <div className="flex items-center gap-2">
+            <span className="text-2xl">⏱️</span>
+            <span>TIME DILATION: {(settings.timeScale * 100).toFixed(0)}%</span>
           </div>
         </div>
       )}
