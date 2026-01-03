@@ -40,6 +40,31 @@ View your app in AI Studio: https://ai.studio/apps/drive/1AgDV_QKyMmBzZPc3FG4uRc
    npm run build
    ```
 
+## Electron Desktop App
+
+Build native desktop applications for macOS, Windows, and Linux:
+
+### Development
+```bash
+npm run electron:dev
+```
+
+### Build macOS Installer
+```bash
+npm run electron:build:mac
+```
+
+This creates a `.dmg` installer in the `release/` directory with support for both Intel (x64) and Apple Silicon (arm64) architectures.
+
+For detailed instructions on building Mac installers, icon creation, and troubleshooting, see [docs/BUILDING_MAC.md](docs/BUILDING_MAC.md).
+
+### Build for All Platforms
+```bash
+npm run electron:build
+```
+
+**Note:** Building for macOS requires a Mac. For cross-platform builds, use CI/CD or the appropriate platform.
+
 ## Testing & Validation
 
 This repository includes comprehensive testing and validation tools:
