@@ -1,6 +1,7 @@
-import React, { useRef, useEffect } from 'react';
-import { StellarBody, CameraState, SimulationSettings, Vector2, StellarCategory, AnomalyType, DragPayload, CollisionEvent } from '../types';
-import { calculateRelativeVelocity, calculateCollisionEnergy } from '../services/collisionService';
+import React, { useRef, useEffect, useState } from 'react';
+import { StellarBody, CameraState, SimulationSettings, Vector2, StellarCategory, AnomalyType, DragPayload, CollisionEvent, CollisionAnimationType } from '../types';
+import { calculateRelativeVelocity, calculateCollisionEnergy, findFusionRule } from '../services/collisionService';
+import { playCollisionAnimation } from '../services/collisionAnimations';
 
 // Global declaration for Babylon and Havok loaded via Script tags
 declare global {
@@ -417,20 +418,30 @@ const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
                             const relativeVel = calculateRelativeVelocity(body1, body2);
                             const collisionEnergy = calculateCollisionEnergy(body1, body2, relativeVel);
 
+                            const impactPoint = {
+                                x: (pos1.x + pos2.x) / 2,
+                                y: (pos1.z + pos2.z) / 2, // Note: Babylon uses Z for 2D Y
+                            };
+
                             const collisionEvent: CollisionEvent = {
                                 id: crypto.randomUUID(),
                                 body1,
                                 body2,
                                 impactVelocity: relativeVel,
-                                impactPoint: {
-                                    x: (pos1.x + pos2.x) / 2,
-                                    y: (pos1.z + pos2.z) / 2, // Note: Babylon uses Z for 2D Y
-                                },
+                                impactPoint,
                                 timestamp: Date.now(),
                                 relativeEnergy: collisionEnergy,
                             };
 
-                            // Trigger collision handler
+                            // Determine animation type from fusion rules
+                            const fusionRule = findFusionRule(body1, body2);
+                            if (fusionRule) {
+                                // Play visual animation immediately
+                                const intensity = Math.min(collisionEnergy / 1000, 5.0);
+                                playCollisionAnimation(scene, fusionRule.animation, impactPoint, intensity);
+                            }
+
+                            // Trigger collision handler for physics/state update
                             onCollisionRef.current(collisionEvent);
                         }
                     }
