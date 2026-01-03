@@ -2,6 +2,7 @@ import React, { useRef, useEffect, useState } from 'react';
 import { StellarBody, CameraState, SimulationSettings, Vector2, StellarCategory, AnomalyType, DragPayload, CollisionEvent, CollisionAnimationType } from '../types';
 import { calculateRelativeVelocity, calculateCollisionEnergy, findFusionRule } from '../services/collisionService';
 import { playCollisionAnimation } from '../services/collisionAnimations';
+import { generateTextureForBody } from '../services/proceduralTextures';
 
 // Global declaration for Babylon and Havok loaded via Script tags
 declare global {
@@ -241,7 +242,15 @@ const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
 
       const light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0, 1, 0), scene);
       light.intensity = 0.4; // Higher ambient
-      
+
+      // Environment Map for PBR reflections (procedural space environment)
+      const envTexture = BABYLON.CubeTexture.CreateFromPrefilteredData(
+        "https://playground.babylonjs.com/textures/environment.env",
+        scene
+      );
+      scene.environmentTexture = envTexture;
+      scene.environmentIntensity = 0.3; // Subtle space reflections
+
       // Spacetime Grid
       const gridMesh = BABYLON.MeshBuilder.CreateGround("spacetimeGrid", { width: 8000, height: 8000, subdivisions: 200 }, scene);
       const gridMat = new BABYLON.ShaderMaterial("spacetimeMat", scene, {
@@ -529,7 +538,7 @@ const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
             } 
             // 2. Stars
             else if (
-                body.category === StellarCategory.STAR || 
+                body.category === StellarCategory.STAR ||
                 body.category === StellarCategory.NEUTRON_STAR ||
                 body.category === StellarCategory.PULSAR ||
                 body.category === StellarCategory.MAGNETAR ||
@@ -540,13 +549,27 @@ const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
                 body.category === StellarCategory.BROWN_DWARF ||
                 body.category === StellarCategory.QUASAR
             ) {
-                mesh = BABYLON.MeshBuilder.CreateSphere(body.name, { diameter: body.radius * 2, segments: 32 }, scene);
+                mesh = BABYLON.MeshBuilder.CreateSphere(body.name, { diameter: body.radius * 2, segments: 64 }, scene);
                 const pbr = new BABYLON.PBRMaterial(body.name + "_mat", scene);
+
+                // Generate procedural texture for stars
+                const textures = generateTextureForBody(scene, body.category, body.mass, body.id.split('-')[0].charCodeAt(0) * 1000);
+
+                if (textures.albedo) {
+                    pbr.albedoTexture = textures.albedo;
+                } else {
+                    const c = BABYLON.Color3.FromHexString(body.color);
+                    pbr.albedoColor = c;
+                }
+
                 const c = BABYLON.Color3.FromHexString(body.color);
-                pbr.albedoColor = c;
+                pbr.emissiveTexture = textures.albedo; // Use same texture for emission
                 pbr.emissiveColor = c;
+                pbr.emissiveIntensity = 1.5;
                 pbr.metallic = 0.0;
-                pbr.roughness = 0.9;
+                pbr.roughness = 1.0;
+                pbr.unlit = false;
+
                 mesh.material = pbr;
                 
                 const ps = new BABYLON.ParticleSystem("particles", 2000, scene);
@@ -577,16 +600,50 @@ const SimulationCanvas: React.FC<SimulationCanvasProps> = ({
             }
             // 4. Planets/Others
             else {
+                // Higher segments for better texture detail
                 if (body.category === StellarCategory.ASTEROID) {
                     mesh = BABYLON.MeshBuilder.CreatePolyhedron(body.name, { type: 1, size: body.radius }, scene);
                 } else {
-                    mesh = BABYLON.MeshBuilder.CreateSphere(body.name, { diameter: body.radius * 2, segments: 32 }, scene);
+                    mesh = BABYLON.MeshBuilder.CreateSphere(body.name, { diameter: body.radius * 2, segments: 64 }, scene);
                 }
+
                 const pbr = new BABYLON.PBRMaterial(body.name + "_mat", scene);
-                const c = BABYLON.Color3.FromHexString(body.color);
-                pbr.albedoColor = c;
-                pbr.metallic = 0.1;
-                pbr.roughness = 0.6;
+
+                // Generate procedural textures
+                const textures = generateTextureForBody(scene, body.category, body.mass, body.id.split('-')[0].charCodeAt(0) * 1000);
+
+                if (textures.albedo) {
+                    pbr.albedoTexture = textures.albedo;
+                } else {
+                    const c = BABYLON.Color3.FromHexString(body.color);
+                    pbr.albedoColor = c;
+                }
+
+                // Normal map for surface detail
+                if (textures.normal) {
+                    pbr.bumpTexture = textures.normal;
+                    pbr.bumpTexture.level = 1.5; // Bump intensity
+                }
+
+                // PBR properties
+                if (body.category === StellarCategory.PLANET) {
+                    pbr.metallic = 0.0;
+                    pbr.roughness = 0.7;
+
+                    // Add subsurface scattering for atmosphere effect
+                    if (body.mass > 15 && body.mass < 80) { // Earth-like planets
+                        pbr.subSurface.isRefractionEnabled = true;
+                        pbr.subSurface.tintColor = new BABYLON.Color3(0.3, 0.5, 0.9);
+                        pbr.subSurface.refractionIntensity = 0.2;
+                    }
+                } else if (body.category === StellarCategory.ASTEROID || body.category === StellarCategory.MOON) {
+                    pbr.metallic = 0.2;
+                    pbr.roughness = 1.0;
+                } else {
+                    pbr.metallic = 0.1;
+                    pbr.roughness = 0.8;
+                }
+
                 mesh.material = pbr;
             }
 
