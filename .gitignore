@@ -12,6 +12,11 @@ dist
 dist-ssr
 *.local
 
+# Electron build artifacts
+release/
+out/
+.electron-builder-cache/
+
 # Rust build artifacts
 target/
 Cargo.lock
