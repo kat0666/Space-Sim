@@ -56,6 +56,8 @@ npm run electron:build:mac
 
 This creates a `.dmg` installer in the `release/` directory with support for both Intel (x64) and Apple Silicon (arm64) architectures.
 
+For detailed instructions on building Mac installers, icon creation, and troubleshooting, see [docs/BUILDING_MAC.md](docs/BUILDING_MAC.md).
+
 ### Build for All Platforms
 ```bash
 npm run electron:build
