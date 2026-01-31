@@ -29,6 +29,12 @@ View your app in AI Studio: https://ai.studio/apps/drive/1AgDV_QKyMmBzZPc3FG4uRc
 
 2. **Set up environment:**
    Create a `.env.local` file and set the `GEMINI_API_KEY` to your Gemini API key
+   ```bash
+   cp .env.example .env.local
+   # Edit .env.local and add your actual API key
+   ```
+   
+   **Important**: See [SECURITY.md](SECURITY.md) for API key security best practices.
 
 3. **Run the app:**
    ```bash
@@ -84,6 +90,7 @@ We welcome contributions! Please see:
 - [Bug Report Template](.github/ISSUE_TEMPLATE/bug_report.md)
 - [Feature Request Template](.github/ISSUE_TEMPLATE/feature_request.md)
 - [Agents Documentation](agents/README.md) - How to use validators and extend the pipeline
+- [Security Guidelines](SECURITY.md) - API key management and security best practices
 
 ### Code Owners
 See [CODEOWNERS](.github/CODEOWNERS) for automatic review assignments.

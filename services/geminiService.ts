@@ -18,7 +18,7 @@ export const fetchRealObjectData = async (query: string): Promise<{ name: string
     Description: [text]`;
 
     const result = await genAI.models.generateContent({ 
-      model: "gemini-2.5-flash",
+      model: "gemini-2.0-flash-exp",
       contents: prompt,
       config: {
         tools: [{ googleSearch: {} }] 
@@ -90,7 +90,7 @@ export const analyzeSimulationStability = async (bodies: StellarBody[]): Promise
     `;
 
     const result = await genAI.models.generateContent({
-      model: "gemini-3-pro-preview",
+      model: "gemini-2.0-flash-thinking-exp",
       contents: prompt,
       config: {
         responseMimeType: "application/json",
@@ -99,7 +99,16 @@ export const analyzeSimulationStability = async (bodies: StellarBody[]): Promise
     });
 
     const responseText = result.text || "{}";
-    return JSON.parse(responseText) as SimulationAnalysis;
+    try {
+      return JSON.parse(responseText) as SimulationAnalysis;
+    } catch (parseError) {
+      console.error("Failed to parse Gemini response:", parseError);
+      return {
+        stabilityScore: 50,
+        prediction: "Analysis unavailable. Proceed with caution.",
+        notableInteractions: []
+      };
+    }
 
   } catch (error) {
     console.error("Gemini Thinking Error:", error);
@@ -119,27 +128,32 @@ export const generateAnomaly = async (): Promise<StellarBody | null> => {
     `;
 
     const result = await genAI.models.generateContent({
-        model: "gemini-2.5-flash",
+        model: "gemini-2.0-flash-exp",
         contents: prompt,
         config: {
             responseMimeType: "application/json"
         }
     });
     
-    const data = JSON.parse(result.text || "{}");
-    
-    return {
-        id: crypto.randomUUID(),
-        name: data.name || "Unknown Anomaly",
-        category: StellarCategory.ANOMALY,
-        mass: data.mass || 1000,
-        radius: data.radius || 50,
-        position: { x: 0, y: 0 },
-        velocity: { x: 0, y: 0 },
-        color: data.color || "#00FF00",
-        trail: [],
-        description: data.description
-    };
+    try {
+      const data = JSON.parse(result.text || "{}");
+      
+      return {
+          id: crypto.randomUUID(),
+          name: data.name || "Unknown Anomaly",
+          category: StellarCategory.ANOMALY,
+          mass: data.mass || 1000,
+          radius: data.radius || 50,
+          position: { x: 0, y: 0 },
+          velocity: { x: 0, y: 0 },
+          color: data.color || "#00FF00",
+          trail: [],
+          description: data.description
+      };
+    } catch (parseError) {
+      console.error("Failed to parse anomaly data:", parseError);
+      return null;
+    }
   } catch (e) {
       console.error(e);
       return null;
